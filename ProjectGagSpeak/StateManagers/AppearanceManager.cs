@@ -229,6 +229,14 @@ public sealed class AppearanceManager : DisposableMediatorSubscriberBase
         if(!UpdateStateForLocking(setRef, padlock, pwd, endTime, enactor, forced))
             return false;
 
+        // Enable the Hardcore Properties.
+        if (setRef.HasPropertiesForUser(setRef.EnabledBy))
+        {
+            Logger.LogDebug("Set Contains HardcoreProperties for " + setRef.EnabledBy, LoggerType.AppearanceState);
+            if (setRef.PropertiesEnabledForUser(setRef.EnabledBy))
+                IpcFastUpdates.InvokeHardcoreTraits(NewState.Locked, setRef);
+        }
+
         // Finally, we should fire to our achievement manager, if we have marked for us to.
         if (triggerAchievement)
             UnlocksEventManager.AchievementEvent(UnlocksEvent.RestraintLockChange, restraintId, padlock, true, enactor);
@@ -253,6 +261,14 @@ public sealed class AppearanceManager : DisposableMediatorSubscriberBase
         // perform the update for the lock state. If it fails to update, it will return false, thus we should return false.
         if (!UpdateStateForUnlocking(setRef, guessedPass, enactorUid, forced))
             return false;
+
+        // Enable the Hardcore Properties.
+        if (setRef.HasPropertiesForUser(setRef.EnabledBy))
+        {
+            Logger.LogDebug("Set Contains HardcoreProperties for " + setRef.EnabledBy, LoggerType.AppearanceState);
+            if (setRef.PropertiesEnabledForUser(setRef.EnabledBy))
+                IpcFastUpdates.InvokeHardcoreTraits(NewState.Unlocked, setRef);
+        }
 
         // Handle achievements.
         bool soldSlaveSatisfied = (prevAssigner != MainHub.UID) && (enactorUid != MainHub.UID) && (enactorUid != prevAssigner);

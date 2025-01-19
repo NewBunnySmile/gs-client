@@ -32,6 +32,7 @@ public class HardcoreHandler : DisposableMediatorSubscriberBase
     private readonly EmoteMonitor _emoteMonitor; // for handling the blindfold logic
     private readonly ITargetManager _targetManager; // for targeting pair on follows.
     private bool _emoteViaTraits;
+    private bool _blindfoldViaTraits;
     private EmoteState _traitEmoteState;
     
     private CancellationTokenSource _forcedEmoteStateCTS = new(); // For ensuring early cancelations are handled.
@@ -53,6 +54,7 @@ public class HardcoreHandler : DisposableMediatorSubscriberBase
         _emoteMonitor = emoteMonitor;
         _targetManager = targetManager;
         _emoteViaTraits = false;
+        _blindfoldViaTraits = false;
         _traitEmoteState = new GlobalPermExtensions.EmoteState();
 
         Mediator.Subscribe<HardcoreActionMessage>(this, (msg) =>
@@ -77,24 +79,43 @@ public class HardcoreHandler : DisposableMediatorSubscriberBase
     private void ToggleHardcoreTraits(NewState newState, RestraintSet restraintSet)
     {
         // Please use normal pair control when using emote depending restraint sets
-        if (restraintSet.EnabledBy != MainHub.UID || !restraintSet.SetTraits[restraintSet.EnabledBy].ForceEmote)
+        if (restraintSet.EnabledBy != MainHub.UID)
             return;
 
-        if(newState == NewState.Enabled)
+        if (restraintSet.SetTraits[restraintSet.EnabledBy].ForceEmote)
         {
-            byte emoteIdToForce = restraintSet.SetTraits[restraintSet.EnabledBy].ForceEmoteId;
-            Logger.LogInformation("Enabling Restraint set forced Emote", LoggerType.HardcoreActions);
-            _emoteViaTraits = true;
-            _traitEmoteState = new GlobalPermExtensions.EmoteState(restraintSet.EnabledBy, emoteIdToForce, 0, false);
-            UpdateForcedEmoteState(NewState.Enabled);
+            if (newState == NewState.Enabled)
+            {
+                byte emoteIdToForce = restraintSet.SetTraits[restraintSet.EnabledBy].ForceEmoteId;
+                Logger.LogInformation("Enabling Restraint set forced Emote", LoggerType.HardcoreActions);
+                _emoteViaTraits = true;
+                _traitEmoteState = new GlobalPermExtensions.EmoteState(restraintSet.EnabledBy, emoteIdToForce, 0, false);
+                UpdateForcedEmoteState(NewState.Enabled);
+            }
+            else if (newState == NewState.Disabled)
+            {
+                Logger.LogInformation("Disabling Restraint set forced Emote", LoggerType.HardcoreActions);
+                _emoteViaTraits = false;
+                _traitEmoteState = new GlobalPermExtensions.EmoteState();
+                UpdateForcedEmoteState(NewState.Disabled);
+            }
         }
-        else if(newState == NewState.Disabled)
+        if (restraintSet.SetTraits[restraintSet.EnabledBy].Blindfolded)
         {
-            Logger.LogInformation("Disabling Restraint set forced Emote", LoggerType.HardcoreActions);
-            _emoteViaTraits = false;
-            _traitEmoteState = new GlobalPermExtensions.EmoteState();
-            UpdateForcedEmoteState(NewState.Disabled);
+            if (newState == NewState.Locked)
+            {
+                Logger.LogInformation("Enabled Blindfold for Restraint Set", LoggerType.HardcoreActions);
+                _blindfoldViaTraits = true;
+                UpdateBlindfoldState(NewState.Enabled);
+            }
+            else if (newState == NewState.Unlocked)
+            {
+                Logger.LogInformation("Disabled Blindfold for Restraint Set", LoggerType.HardcoreActions);
+                _blindfoldViaTraits = false;
+                UpdateBlindfoldState(NewState.Disabled);
+            }
         }
+        
     }
 
     public UserGlobalPermissions? PlayerPerms => _playerData.GlobalPerms;
@@ -102,7 +123,7 @@ public class HardcoreHandler : DisposableMediatorSubscriberBase
     public bool IsForcedToFollow => _playerData.GlobalPerms?.IsFollowing() ?? false;
     public bool IsForcedToEmote => !(_playerData.GlobalPerms?.ForcedEmoteState.NullOrEmpty() ?? true) || _emoteViaTraits; // This is the inverse I think?
     public bool IsForcedToStay => _playerData.GlobalPerms?.IsStaying() ?? false;
-    public bool IsBlindfolded => _playerData.GlobalPerms?.IsBlindfolded() ?? false;
+    public bool IsBlindfolded => !_blindfoldViaTraits ? (_playerData.GlobalPerms?.IsBlindfolded() ?? false) : true;
     public bool IsHidingChat => _playerData.GlobalPerms?.IsChatHidden() ?? false;
     public bool IsHidingChatInput => _playerData.GlobalPerms?.IsChatInputHidden() ?? false;
     public bool IsBlockingChatInput => _playerData.GlobalPerms?.IsChatInputBlocked() ?? false;
