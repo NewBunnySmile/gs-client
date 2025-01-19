@@ -120,12 +120,12 @@ public class ActionMonitor : DisposableMediatorSubscriberBase
 
     public void ToggleHardcoreTraits(NewState newState, RestraintSet restraintSetRef)
     {
-        if (restraintSetRef.EnabledBy != MainHub.UID && newState is NewState.Enabled)
+        if (newState is NewState.Enabled)
         {
             Logger.LogWarning(restraintSetRef.EnabledBy + " has enabled hardcore traits");
             EnableManipulatedActionData(restraintSetRef, restraintSetRef.EnabledBy);
         }
-        if (restraintSetRef.EnabledBy != MainHub.UID && newState is NewState.Disabled)
+        if (newState is NewState.Disabled)
         {
             Logger.LogWarning(restraintSetRef.EnabledBy + " has disabled hardcore traits");
             DisableManipulatedActionData();
