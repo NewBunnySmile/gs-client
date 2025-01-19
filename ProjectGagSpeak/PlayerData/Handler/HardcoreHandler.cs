@@ -1,7 +1,9 @@
 using Dalamud.Game.ClientState.Objects;
+using GagSpeak.GagspeakConfiguration.Models;
 using GagSpeak.Hardcore.Movement;
 using GagSpeak.PlayerData.Data;
 using GagSpeak.PlayerData.Pairs;
+using GagSpeak.PlayerData.Services;
 using GagSpeak.Services.ConfigurationServices;
 using GagSpeak.Services.Mediator;
 using GagSpeak.StateManagers;
@@ -29,6 +31,8 @@ public class HardcoreHandler : DisposableMediatorSubscriberBase
     private readonly ChatSender _chatSender; // for sending chat commands
     private readonly EmoteMonitor _emoteMonitor; // for handling the blindfold logic
     private readonly ITargetManager _targetManager; // for targeting pair on follows.
+    private bool _emoteViaTraits;
+    private EmoteState _traitEmoteState;
     
     private CancellationTokenSource _forcedEmoteStateCTS = new(); // For ensuring early cancelations are handled.
 
@@ -48,6 +52,8 @@ public class HardcoreHandler : DisposableMediatorSubscriberBase
         _chatSender = chatSender;
         _emoteMonitor = emoteMonitor;
         _targetManager = targetManager;
+        _emoteViaTraits = false;
+        _traitEmoteState = new GlobalPermExtensions.EmoteState();
 
         Mediator.Subscribe<HardcoreActionMessage>(this, (msg) =>
         {
@@ -64,18 +70,43 @@ public class HardcoreHandler : DisposableMediatorSubscriberBase
         });
 
         Mediator.Subscribe<SafewordHardcoreUsedMessage>(this, _ => OnSafewordUsed().ConfigureAwait(false));
+
+        IpcFastUpdates.HardcoreTraitsEventFired += ToggleHardcoreTraits;
+    }
+
+    private void ToggleHardcoreTraits(NewState newState, RestraintSet restraintSet)
+    {
+        // Please use normal pair control when using emote depending restraint sets
+        if (restraintSet.EnabledBy != MainHub.UID || !restraintSet.SetTraits[restraintSet.EnabledBy].ForceEmote)
+            return;
+
+        if(newState == NewState.Enabled)
+        {
+            byte emoteIdToForce = restraintSet.SetTraits[restraintSet.EnabledBy].ForceEmoteId;
+            Logger.LogInformation("Enabling Restraint set forced Emote", LoggerType.HardcoreActions);
+            _emoteViaTraits = true;
+            _traitEmoteState = new GlobalPermExtensions.EmoteState(restraintSet.EnabledBy, emoteIdToForce, 0, false);
+            UpdateForcedEmoteState(NewState.Enabled);
+        }
+        else if(newState == NewState.Disabled)
+        {
+            Logger.LogInformation("Disabling Restraint set forced Emote", LoggerType.HardcoreActions);
+            _emoteViaTraits = false;
+            _traitEmoteState = new GlobalPermExtensions.EmoteState();
+            UpdateForcedEmoteState(NewState.Disabled);
+        }
     }
 
     public UserGlobalPermissions? PlayerPerms => _playerData.GlobalPerms;
 
     public bool IsForcedToFollow => _playerData.GlobalPerms?.IsFollowing() ?? false;
-    public bool IsForcedToEmote => !(_playerData.GlobalPerms?.ForcedEmoteState.NullOrEmpty() ?? true); // This is the inverse I think?
+    public bool IsForcedToEmote => !(_playerData.GlobalPerms?.ForcedEmoteState.NullOrEmpty() ?? true) || _emoteViaTraits; // This is the inverse I think?
     public bool IsForcedToStay => _playerData.GlobalPerms?.IsStaying() ?? false;
     public bool IsBlindfolded => _playerData.GlobalPerms?.IsBlindfolded() ?? false;
     public bool IsHidingChat => _playerData.GlobalPerms?.IsChatHidden() ?? false;
     public bool IsHidingChatInput => _playerData.GlobalPerms?.IsChatInputHidden() ?? false;
     public bool IsBlockingChatInput => _playerData.GlobalPerms?.IsChatInputBlocked() ?? false;
-    public GlobalPermExtensions.EmoteState ForcedEmoteState => _playerData.GlobalPerms?.ExtractEmoteState() ?? new GlobalPermExtensions.EmoteState();
+    public GlobalPermExtensions.EmoteState ForcedEmoteState => !_emoteViaTraits ? (_playerData.GlobalPerms?.ExtractEmoteState() ?? new GlobalPermExtensions.EmoteState()) : _traitEmoteState;
 
     public bool MonitorFollowLogic => IsForcedToFollow;
     public bool MonitorEmoteLogic => IsForcedToEmote;
@@ -101,6 +132,7 @@ public class HardcoreHandler : DisposableMediatorSubscriberBase
             if (CachedMovementMode is MovementMode.Standard && GameConfig.UiControl.GetBool("MoveMode") is true)
                 GameConfig.UiControl.Set("MoveMode", (int)MovementMode.Standard);
         }
+        IpcFastUpdates.HardcoreTraitsEventFired -= ToggleHardcoreTraits;
     }
 
     private async Task OnSafewordUsed()
@@ -218,7 +250,7 @@ public class HardcoreHandler : DisposableMediatorSubscriberBase
                 var emoteID = ForcedEmoteState.EmoteID; // Assigned for condition below to avoid accessing the ForcedEmoteState getter multiple times.
                 if (!await _emoteMonitor.WaitForCondition(() => EmoteMonitor.CanUseEmote(emoteID), 5, _forcedEmoteStateCTS.Token))
                 {
-                    Logger.LogWarning("Forced Emote State was not allowed to be executed. Cancelling.");
+                    Logger.LogWarning("Forced Emote State was not allowed to be executed. Cancelling." + emoteID);
                     return;
                 }
 
@@ -251,7 +283,7 @@ public class HardcoreHandler : DisposableMediatorSubscriberBase
                     var emoteID = ForcedEmoteState.EmoteID; // Assigned for condition below to avoid accessing the ForcedEmoteState getter multiple times.
                     if (!await _emoteMonitor.WaitForCondition(() => EmoteMonitor.CanUseEmote(emoteID), 5, _forcedEmoteStateCTS.Token))
                     {
-                        Logger.LogWarning("Forced Emote State was not allowed to be executed. Cancelling.");
+                        Logger.LogWarning("Forced Emote State was not allowed to be executed. Cancelling." + emoteID);
                         return;
                     }
 
