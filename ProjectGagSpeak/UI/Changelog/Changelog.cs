@@ -20,6 +20,11 @@ public class Changelog
     // Add Version Data here.
     private void AddVersionData()
     {
+        VersionEntry(2, 1, 3, 2)
+            .RegisterBugfix("Fixed Gags causing messages to not be sent in chat under certain conditions. -Yfthbr")
+            .RegisterBugfix("Fixed some cursed loot buts - NBS")
+            .RegisterBugfix("Fixed restriction application requiring restraint set permissions for some reason.")
+            .RegisterBugfix("Fixed MetaData application not applying for restrictions.");
         VersionEntry(2, 1, 2, 0)
             .RegisterMain("Beeeeg patch of many small things.")
             .RegisterFeature("Additional support for Deustch localization for Hardcore traits. - Cuteki")
